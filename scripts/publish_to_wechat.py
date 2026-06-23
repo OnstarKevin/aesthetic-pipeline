@@ -590,49 +590,47 @@ def publish_via_email(selection_data, smtp_server, smtp_port, sender_email, send
     # HTML正文
     msg.attach(MIMEText(html_body, "html", "utf-8"))
 
-    # 内嵌图片
+    # 内嵌图片 — 全部压缩后再嵌入，控制邮件总大小
     attached = 0
     skipped = 0
+    total_bytes = 0
     for idx, (cat_key, img) in enumerate(all_images):
         local = img.get("local_path", "")
         if not local or not os.path.exists(local):
             skipped += 1
             continue
 
-        # 限制单张图片大小（邮件不宜太大）
-        file_size = os.path.getsize(local)
-        if file_size > 5 * 1024 * 1024:  # 超过5MB的压缩或跳过
-            try:
-                from PIL import Image
-                import io
-                pil_img = Image.open(local)
-                # 缩小到合理尺寸
-                pil_img.thumbnail((1200, 1200), Image.LANCZOS)
-                buf = io.BytesIO()
-                pil_img.save(buf, format="JPEG", quality=85)
-                img_data = buf.getvalue()
-            except Exception:
-                skipped += 1
-                continue
-        else:
-            with open(local, "rb") as f:
-                img_data = f.read()
+        # 所有图片统一压缩：宽度≤800px，JPEG质量72
+        try:
+            from PIL import Image
+            import io
+            pil_img = Image.open(local)
+            # 转RGB（PNG带透明通道的转JPEG需要）
+            if pil_img.mode in ("RGBA", "P", "LA"):
+                pil_img = pil_img.convert("RGB")
+            elif pil_img.mode != "RGB":
+                pil_img = pil_img.convert("RGB")
+            # 缩小到宽度800px（保持比例）
+            pil_img.thumbnail((800, 800), Image.LANCZOS)
+            buf = io.BytesIO()
+            pil_img.save(buf, format="JPEG", quality=72, optimize=True)
+            img_data = buf.getvalue()
+        except Exception as e:
+            print(f"  ⚠️ 图片压缩失败 {local}: {e}")
+            skipped += 1
+            continue
 
+        total_bytes += len(img_data)
         cid = f"img_{idx}"
         mime_img = MIMEImage(img_data)
-        ext = Path(local).suffix.lower()
-        if ext == ".png":
-            mime_img.set_type("image/png")
-        elif ext == ".webp":
-            mime_img.set_type("image/webp")
-        else:
-            mime_img.set_type("image/jpeg")
+        mime_img.set_type("image/jpeg")
         mime_img.add_header("Content-ID", f"<{cid}>")
-        mime_img.add_header("Content-Disposition", "inline", filename=f"{cid}{ext}")
+        mime_img.add_header("Content-Disposition", "inline", filename=f"{cid}.jpg")
         msg.attach(mime_img)
         attached += 1
 
     print(f"  📎 内嵌图片: {attached} 张 (跳过: {skipped})")
+    print(f"  📦 邮件图片总大小: {total_bytes/1024/1024:.1f} MB")
 
     # ── 发送邮件 ──
     print(f"  📤 连接SMTP: {smtp_server}:{smtp_port}")
