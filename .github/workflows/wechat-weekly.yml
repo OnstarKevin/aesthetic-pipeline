@@ -106,7 +106,7 @@ jobs:
       - name: 📧 发送邮件
         if: env.SENDER_EMAIL != '' && env.SENDER_PASSWORD != ''
         env:
-          SMTP_SERVER: smtp.163.com
+          SMTP_SERVER: smtp.yeah.net
           SMTP_PORT: 465
           SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
           SENDER_PASSWORD: ${{ secrets.SENDER_PASSWORD }}
